@@ -102,7 +102,6 @@ def main(conf: DictConfig):
         model=model,
         args=args,
         train_dataset=train_dataset.remove_columns("id"),
-        eval_dataset=eval_dataset.remove_columns(["id", "eval_id"]),
         loss=loss,
         evaluator=dev_evaluator,
     )
