@@ -3,6 +3,7 @@ from __future__ import annotations
 import heapq
 import logging
 import os
+import random
 from contextlib import nullcontext
 from typing import TYPE_CHECKING, Callable
 
@@ -49,9 +50,9 @@ class PatientQAEvaluator(SentenceEvaluator):
     ]
     queries = {str(k): v for k,v in enumerate(queries)}
 
-    candidate_docs = {
-        "0": ["0", "1", "2", "3"],
-        "1": ["4", "5", "6", "7"]
+    distractor_docs = {
+        "0": ["0", "3"],
+        "1": ["4", "5", "6"]
     }
     relevant_docs = {
         "0": set(["1", "2"]),
@@ -60,7 +61,7 @@ class PatientQAEvaluator(SentenceEvaluator):
     qa_evaluator = PatientQAEvaluator(
         queries=queries,
         corpus=corpus,
-        candidate_docs=candidate_docs,
+        distractor_docs=distractor_docs,
         relevant_docs=relevant_docs,
         name="ontada2024-test"
     )
@@ -71,8 +72,8 @@ class PatientQAEvaluator(SentenceEvaluator):
         self,
         queries: dict[str, str],  # qid => query
         corpus: dict[str, str],  # cid => doc
-        candidate_docs: dict[str, list[str]],  # qid => List[cid]
         relevant_docs: dict[str, set[str]],  # qid => Set[cid]
+        distractor_docs: dict[str, list[str]],  # qid => List[cid]
         corpus_chunk_size: int = 50000,
         mrr_at_k: list[int] = [10],
         ndcg_at_k: list[int] = [10],
@@ -133,7 +134,7 @@ class PatientQAEvaluator(SentenceEvaluator):
         self.corpus_prompt = corpus_prompt
         self.corpus_prompt_name = corpus_prompt_name
 
-        self.candidate_docs = candidate_docs
+        self.distractor_docs = distractor_docs
         self.relevant_docs = relevant_docs
         self.corpus_chunk_size = corpus_chunk_size
         self.mrr_at_k = mrr_at_k
@@ -282,10 +283,15 @@ class PatientQAEvaluator(SentenceEvaluator):
             queries_result_list[name] = [[] for _ in range(len(query_embeddings))]
 
         # Iterate over the candidate chunks
-        for qid, candidate_doc_ids in tqdm(
-            self.candidate_docs.items(), desc="Candidate Chunks", disable=not self.show_progress_bar
+        for qid, relevant_doc_ids in tqdm(
+            self.relevant_docs.items(), desc="Chunks per Question", disable=not self.show_progress_bar
         ):
+            distractor_doc_ids = self.distractor_docs[qid]
+            candidate_doc_ids = relevant_doc_ids + distractor_doc_ids
+            random.shuffle(candidate_doc_ids)
+
             candidate_docs = [self.corpus[cid] for cid in candidate_doc_ids]
+
             with (
                 nullcontext()
                 if self.truncate_dim is None
