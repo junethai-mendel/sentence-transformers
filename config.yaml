@@ -1,6 +1,6 @@
 model:
   name: "nvidia/NV-Embed-v2"
-  max_seq_length: 512
+  max_seq_length: 1024
   tokenizer_padding_side: "right"
   set_pooling_include_prompt: false
 
@@ -8,25 +8,23 @@ peft:
   embedding_model:
     target_modules: ["embed_tokens", "q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"]
   latent_attention_model:
-    target_modules: ["to_q", "to_kv", "to_out"]
+    target_modules: ["to_q", "to_kv", "to_out", "net.0", "net.2"]
   inference_mode: false
   r: 16
   lora_alpha: 32
   lora_dropout: 0.1
 
 data:
-  hf_data_dir: "/workspace/data/june/sentence-transformers/data/hf_v0"
-  test_size: 0.05
-  seed: 6789
+  hf_data_dir: "/workspace/data/june/sentence-transformers/data/hf_v5"
 
 training:
-  output_dir: "models/nv-embed-v2-emrqa-peft"
+  output_dir: "models/nv-embed-v2-hfv5-peft"
   num_train_epochs: 1
   train_batch_size: 4
   eval_batch_size: 64
-  gradient_accumulation_steps: 32
-  learning_rate: 2e-5
-  warmup_ratio: 0.1
+  gradient_accumulation_steps: 1
+  learning_rate: 1e-5
+  warmup_ratio: 0.2
   fp16: false
   bf16: true
   eval_strategy: "steps"
@@ -34,16 +32,15 @@ training:
   save_strategy: "steps"
   save_steps: 1000
   save_total_limit: 2
-  logging_steps: 250
+  logging_steps: 100
   logging_first_step: true
-  run_name: "nv-embed-v2-emrqa-peft"
+  seed: 6789
+  run_name: "nv-embed-v2-hfv5-peft"
 
 evaluation:
-  seed: 6789
-  corpus_sample_size: 500
-  name: "gooaq-dev"
+  name: "hfv5-test"
 
 output:
-  model_save_path: "models/nv-embed-v2-emrqa-peft/final"
-  run_name: "nv-embed-v2-emrqa-peft"
+  model_save_path: "models/nv-embed-v2-hfv5-peft/final"
+  run_name: "MendelAI/nv-embed-v2-hfv5-peft"
   private: true

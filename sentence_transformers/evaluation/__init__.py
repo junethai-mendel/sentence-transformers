@@ -8,6 +8,7 @@ from .MSEEvaluator import MSEEvaluator
 from .MSEEvaluatorFromDataFrame import MSEEvaluatorFromDataFrame
 from .NanoBEIREvaluator import NanoBEIREvaluator
 from .ParaphraseMiningEvaluator import ParaphraseMiningEvaluator
+from .PatientQAEvaluator import PatientQAEvaluator
 from .RerankingEvaluator import RerankingEvaluator
 from .SentenceEvaluator import SentenceEvaluator
 from .SequentialEvaluator import SequentialEvaluator
@@ -30,4 +31,5 @@ __all__ = [
     "TripletEvaluator",
     "RerankingEvaluator",
     "NanoBEIREvaluator",
+    "PatientQAEvaluator",
 ]

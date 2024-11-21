@@ -284,7 +284,7 @@ class PatientQAEvaluator(SentenceEvaluator):
 
         # Iterate over the candidate chunks
         for qid, relevant_doc_ids in tqdm(
-            self.relevant_docs.items(), desc="Chunks per Question", disable=not self.show_progress_bar
+            self.relevant_docs.items(), desc="Iter Question", disable=not self.show_progress_bar
         ):
             distractor_doc_ids = self.distractor_docs[qid]
             candidate_doc_ids = relevant_doc_ids + distractor_doc_ids
@@ -305,8 +305,8 @@ class PatientQAEvaluator(SentenceEvaluator):
                     show_progress_bar=False,
                     convert_to_tensor=True,
                 )
-            qix = self.queries_ids.index(qid)
-            sub_query_embeddings = query_embeddings[qix].unsqueeze(0)
+            query_itr = self.queries_ids.index(qid)
+            sub_query_embeddings = query_embeddings[query_itr].unsqueeze(0)
             for name, score_function in self.score_functions.items():
                 pair_scores = score_function(sub_query_embeddings, sub_corpus_embeddings)
 
@@ -317,15 +317,12 @@ class PatientQAEvaluator(SentenceEvaluator):
                 pair_scores_top_k_values = pair_scores_top_k_values.cpu().tolist()
                 pair_scores_top_k_idx = pair_scores_top_k_idx.cpu().tolist()
 
-                for query_itr in range(len(sub_query_embeddings)):
-                    for sub_corpus_id, score in zip(
-                        pair_scores_top_k_idx[query_itr], pair_scores_top_k_values[query_itr]
-                    ):
-                        corpus_id = candidate_doc_ids[sub_corpus_id]
-                        if len(queries_result_list[name][query_itr]) < max_k:
-                            heapq.heappush(queries_result_list[name][query_itr], (score, corpus_id))
-                        else:
-                            heapq.heappushpop(queries_result_list[name][query_itr], (score, corpus_id))
+                for sub_corpus_id, score in zip(pair_scores_top_k_idx[0], pair_scores_top_k_values[0]):
+                    corpus_id = candidate_doc_ids[sub_corpus_id]
+                    if len(queries_result_list[name][query_itr]) < max_k:
+                        heapq.heappush(queries_result_list[name][query_itr], (score, corpus_id))
+                    else:
+                        heapq.heappushpop(queries_result_list[name][query_itr], (score, corpus_id))
 
         for name in queries_result_list:
             for query_itr in range(len(queries_result_list[name])):

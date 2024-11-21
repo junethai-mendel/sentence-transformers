@@ -19,6 +19,44 @@ from sentence_transformers.training_args import BatchSamplers
 logging.basicConfig(format="%(asctime)s - %(message)s", datefmt="%Y-%m-%d %H:%M:%S", level=logging.INFO)
 
 
+from transformers import TrainerCallback
+
+
+class CheckGradientNorm(TrainerCallback):
+    def __init__(self, threshold):
+        self.threshold = threshold
+
+    def on_optimizer_step(self, args, state, control, **kwargs):
+        model = kwargs["model"]
+        total_norm = 0.0
+        for param in model.parameters():
+            if param.grad is not None:
+                param_norm = param.grad.data.norm(2)
+                total_norm += param_norm.item() ** 2
+        total_norm = total_norm**0.5
+
+        if total_norm > self.threshold:
+            print(f"Gradient norm {total_norm} exceeds the threshold {self.threshold}")
+            gradients = []
+            for name, param in model.named_parameters():
+                if param.requires_grad and param.grad is not None:
+                    grad_norm = param.grad.norm().item()  # Calculate the L2 norm of gradients
+                    gradients.append((name, grad_norm))
+                else:
+                    gradients.append((name, 0))  # No gradient for the parameter
+
+            # Sort the list of tuples by gradient norm, from highest to lowest
+            sorted_gradients = sorted(gradients, key=lambda x: x[1], reverse=True)
+
+            # Print the top k gradients
+            top_k = 3
+            print(f"Top {top_k} parameter gradients:")
+            for name, norm in sorted_gradients[:top_k]:
+                print(f"{name}: {norm}")
+            # import ipdb; ipdb.set_trace()
+            # pass
+
+
 @hydra.main(config_path=".", config_name="config.yaml")
 def main(conf: DictConfig):
     # 1. Load a model to finetune with 2. (Optional) PEFT/LoRA
@@ -27,7 +65,12 @@ def main(conf: DictConfig):
     model.tokenizer.padding_side = conf.model.tokenizer_padding_side
     model.set_pooling_include_prompt(conf.model.set_pooling_include_prompt)
 
-    # Apply PEFT with LoraConfig
+    query_prompt = "Instruct: Given a question, retrieve passages that answer the question. Query: "
+    prompts = {
+        "question": query_prompt,
+    }
+
+    # 2. Apply PEFT with LoraConfig
     embedding_model_peft_config = LoraConfig(
         target_modules=conf.peft.embedding_model.target_modules,
         task_type=TaskType.FEATURE_EXTRACTION,
@@ -53,7 +96,8 @@ def main(conf: DictConfig):
 
     # 3. Load a dataset to finetune on
     dataset_dict = load_from_disk(conf.data.hf_data_dir)
-    train_dataset = dataset_dict["train"].select_columns(["id", "question", "context"])
+    # train_dataset = dataset_dict["train"].select_columns(["question", "context", "event_type"])
+    train_dataset = dataset_dict["train"].select_columns(["question", "context"])
 
     # 4. Define a loss function
     loss = MultipleNegativesRankingLoss(model)
@@ -78,6 +122,8 @@ def main(conf: DictConfig):
         logging_steps=conf.training.logging_steps,
         logging_first_step=conf.training.logging_first_step,
         run_name=conf.training.run_name,
+        seed=conf.training.seed,
+        prompts=prompts,
     )
 
     # 6. Create an evaluator & evaluate the base model
@@ -94,6 +140,7 @@ def main(conf: DictConfig):
         distractor_docs=distractor_docs,
         show_progress_bar=True,
         name=conf.evaluation.name,
+        query_prompt=query_prompt,
     )
     dev_evaluator(model)
 
@@ -101,9 +148,10 @@ def main(conf: DictConfig):
     trainer = SentenceTransformerTrainer(
         model=model,
         args=args,
-        train_dataset=train_dataset.remove_columns("id"),
+        train_dataset=train_dataset,
         loss=loss,
         evaluator=dev_evaluator,
+        # callbacks=[CheckGradientNorm(2)]
     )
     trainer.train()
 
