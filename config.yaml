@@ -1,6 +1,6 @@
 model:
   name: "nvidia/NV-Embed-v2"
-  max_seq_length: 1024
+  max_seq_length: 512
   tokenizer_padding_side: "right"
   set_pooling_include_prompt: false
 
@@ -15,18 +15,20 @@ peft:
   lora_dropout: 0.1
 
 data:
-  hf_data_dir: "/workspace/data/june/sentence-transformers/data/hf_v5"
+  hf_data_dir: "/workspace/data/june/sentence-transformers/data/hf_v8"
+  downsample_train: false
+  downsample_eval: false
 
 training:
-  output_dir: "models/nv-embed-v2-hfv5-peft"
+  output_dir: "models/nv-embed-v2-hfv5-dbg"
   num_train_epochs: 1
   train_batch_size: 4
   eval_batch_size: 64
   gradient_accumulation_steps: 1
-  learning_rate: 1e-5
+  learning_rate: 2e-6
   warmup_ratio: 0.2
   fp16: false
-  bf16: true
+  bf16: false
   eval_strategy: "steps"
   eval_steps: 1000
   save_strategy: "steps"
@@ -35,12 +37,12 @@ training:
   logging_steps: 100
   logging_first_step: true
   seed: 6789
-  run_name: "nv-embed-v2-hfv5-peft"
+  run_name: "nv-embed-v2-ontada-v8"
 
 evaluation:
-  name: "hfv5-test"
+  name: "ontada-v8-test"
 
 output:
-  model_save_path: "models/nv-embed-v2-hfv5-peft/final"
-  run_name: "MendelAI/nv-embed-v2-hfv5-peft"
+  model_save_path: "models/nv-embed-v2-ontada-v8/final"
+  run_name: "MendelAI/nv-embed-v2-ontada-v8"
   private: true

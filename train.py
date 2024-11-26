@@ -3,9 +3,11 @@ from __future__ import annotations
 import logging
 
 import hydra
+import torch
 from datasets import load_from_disk
 from omegaconf import DictConfig
 from peft import LoraConfig, TaskType, get_peft_model
+from transformers import TrainerCallback
 
 from sentence_transformers import (
     SentenceTransformer,
@@ -19,7 +21,25 @@ from sentence_transformers.training_args import BatchSamplers
 logging.basicConfig(format="%(asctime)s - %(message)s", datefmt="%Y-%m-%d %H:%M:%S", level=logging.INFO)
 
 
-from transformers import TrainerCallback
+def check_models_identical(model1, model2):
+    # Check if their architectures are the same
+    if model1.__class__ != model2.__class__:
+        return False
+
+    # Check model states
+    model1_state = model1.state_dict()
+    model2_state = model2.state_dict()
+
+    # Check if all parameters are the same
+    for p1, p2 in zip(model1_state.values(), model2_state.values()):
+        if not torch.allclose(p1, p2, atol=1e-7):
+            return False
+
+    # Check if all keys (parameter names) are the same
+    if model1_state.keys() != model2_state.keys():
+        return False
+
+    return True
 
 
 class CheckGradientNorm(TrainerCallback):
@@ -65,7 +85,7 @@ def main(conf: DictConfig):
     model.tokenizer.padding_side = conf.model.tokenizer_padding_side
     model.set_pooling_include_prompt(conf.model.set_pooling_include_prompt)
 
-    query_prompt = "Instruct: Given a question, retrieve passages that answer the question. Query: "
+    query_prompt = "Instruct: Given a question, retrieve passages that answer the question. Question: "
     prompts = {
         "question": query_prompt,
     }
@@ -93,12 +113,17 @@ def main(conf: DictConfig):
     model[0].auto_model._modules["latent_attention_model"] = get_peft_model(
         model[0].auto_model._modules["latent_attention_model"], latent_attention_model_peft_config
     )
+    logging.info("LoRA embedding model:")
+    model[0].auto_model._modules["embedding_model"].print_trainable_parameters()
+    logging.info("LoRA latent attention model:")
+    model[0].auto_model._modules["latent_attention_model"].print_trainable_parameters()
 
     # 3. Load a dataset to finetune on
     dataset_dict = load_from_disk(conf.data.hf_data_dir)
     # train_dataset = dataset_dict["train"].select_columns(["question", "context", "event_type"])
     train_dataset = dataset_dict["train"].select_columns(["question", "context"])
-
+    if conf.data.downsample_train:
+        train_dataset = train_dataset.select(range(100))
     # 4. Define a loss function
     loss = MultipleNegativesRankingLoss(model)
 
@@ -128,6 +153,8 @@ def main(conf: DictConfig):
 
     # 6. Create an evaluator & evaluate the base model
     eval_dataset = dataset_dict["test"]
+    if conf.data.downsample_eval:
+        eval_dataset = eval_dataset.select(range(100))
     corpus_dataset = dataset_dict["corpus"]
     queries = dict(zip(eval_dataset["id"], eval_dataset["question"]))
     corpus = dict(zip(corpus_dataset["cid"], corpus_dataset["context"]))
@@ -154,6 +181,14 @@ def main(conf: DictConfig):
         # callbacks=[CheckGradientNorm(2)]
     )
     trainer.train()
+
+    # 8. Merge LoRA weights
+    model[0].auto_model._modules["embedding_model"] = (
+        model[0].auto_model._modules["embedding_model"].merge_and_unload()
+    )
+    model[0].auto_model._modules["latent_attention_model"] = (
+        model[0].auto_model._modules["latent_attention_model"].merge_and_unload()
+    )
 
     # Evaluate the trained model on the evaluator after training
     dev_evaluator(model)
